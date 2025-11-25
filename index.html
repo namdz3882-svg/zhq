@@ -40,6 +40,12 @@
             from { opacity: 0; transform: scale(0.95); }
             to { opacity: 1; transform: scale(1); }
         }
+
+        /* 隐藏横向滚动条但保持功能 (可选) */
+        .tier-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 #1a1a1a;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col items-center p-4">
@@ -55,10 +61,7 @@
             trash: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
             grip: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>`,
             edit: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
-            rotate: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
-            dividerV: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/></svg>`,
-            dividerH: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-            plus: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`
+            rotate: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`
         };
 
         // --- 初始数据 ---
@@ -84,47 +87,24 @@
         // --- 核心逻辑 ---
 
         function renderItem(item, tierId, source) {
-            // 通用拖拽属性
             const dragProps = `
                 draggable="true"
                 ondragstart="handleDragStart(event, '${item.id}', '${source}')"
                 ondblclick="deleteItem('${item.id}', '${source}')"
             `;
 
-            // 1. 横向分隔线 (Line Break)
-            if (item.type === 'divider-h') {
-                return `
-                    <div 
-                        class="w-full h-8 flex items-center justify-center cursor-row-resize hover:bg-white/5 group relative my-1 rounded"
-                        ${dragProps}
-                    >
-                        <div class="w-full h-0.5 bg-gray-600 group-hover:bg-blue-500 transition-colors relative">
-                             <div class="absolute left-1/2 -top-2 -translate-x-1/2 bg-gray-800 px-2 text-[10px] text-gray-500 group-hover:text-blue-400">换行线</div>
-                        </div>
-                    </div>
-                `;
-            }
+            // 如果是在 Tier 中，应用叠压样式 (-ml-6) 和 hover 效果
+            const tierStyles = tierId 
+                ? `-ml-6 first:ml-0 hover:-translate-y-2 hover:scale-110 hover:z-50 hover:shadow-2xl z-10 border-2 border-[#1a1a1a]` 
+                : ``;
 
-            // 2. 竖向分隔符 (Vertical Divider)
-            if (item.type === 'divider-v') {
-                return `
-                    <div 
-                        class="w-4 h-20 sm:h-24 flex items-center justify-center cursor-col-resize hover:bg-white/10 rounded group"
-                        ${dragProps}
-                    >
-                        <div class="w-1 h-3/4 bg-gray-600 rounded-full group-hover:bg-blue-500 transition-colors"></div>
-                    </div>
-                `;
-            }
-
-            // 3. 普通图片 (Image)
             return `
                 <div 
-                    class="relative group w-20 h-20 sm:w-24 sm:h-24 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
+                    class="relative group w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 cursor-grab active:cursor-grabbing transition-all duration-200 ${tierStyles}"
                     ${dragProps}
                 >
-                    <img src="${item.url}" class="w-full h-full object-cover rounded shadow-md pointer-events-none select-none">
-                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded"></div>
+                    <img src="${item.url}" class="w-full h-full object-cover rounded shadow-md pointer-events-none select-none bg-gray-800">
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all rounded"></div>
                 </div>
             `;
         }
@@ -161,27 +141,37 @@
 
             // 2. Tiers HTML
             const tiersHtml = state.tiers.map(tier => `
-                <div class="flex min-h-[120px] border-b border-gray-800 last:border-b-0">
-                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-800 group relative">
+                <div class="flex min-h-[120px] border-b border-gray-800 last:border-b-0 relative overflow-hidden">
+                    <!-- 左侧标签 -->
+                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-800 group relative z-20">
                         <textarea 
                             oninput="updateTierLabel('${tier.id}', this.value)"
                             class="w-full h-full bg-transparent text-center resize-none border-none focus:ring-0 p-2 flex items-center justify-center overflow-hidden font-black text-lg sm:text-xl leading-tight placeholder-white/50 focus:bg-black/10 transition-colors cursor-text"
                             style="line-height: 1.2; padding-top: 35%">${tier.label}</textarea>
                     </div>
+                    
+                    <!-- 放置区域 -->
                     <div 
-                        class="drop-zone flex-1 bg-[#1a1a1a] p-2 flex flex-wrap content-start gap-2 items-center transition-colors duration-200 hover:bg-[#252525]"
+                        class="drop-zone flex-1 bg-[#1a1a1a] p-4 flex items-center gap-0 overflow-x-auto tier-scroll relative"
                         data-type="tier"
                         data-id="${tier.id}"
                         ondragover="handleDragOver(event)"
                         ondrop="handleDrop(event, '${tier.id}')"
                     >
-                        ${tier.items.map(item => renderItem(item, tier.id, tier.id)).join('')}
-                        ${tier.items.length === 0 ? `<div class="w-full h-full min-h-[80px] flex items-center justify-center pointer-events-none"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none">拖拽至此</span></div>` : ''}
+                        <!-- 中间吸附线 (视觉装饰) -->
+                        <div class="absolute left-0 right-0 top-1/2 h-1 bg-gray-700/50 -translate-y-1/2 pointer-events-none z-0"></div>
+                        
+                        <!-- 物品列表 -->
+                        <div class="flex items-center pl-4 pr-4 z-10 w-full min-w-max">
+                            ${tier.items.map(item => renderItem(item, tier.id, tier.id)).join('')}
+                        </div>
+
+                        ${tier.items.length === 0 ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none bg-[#1a1a1a] px-2">拖拽至此吸附</span></div>` : ''}
                     </div>
                 </div>
             `).join('');
 
-            // 3. Pool Items HTML
+            // 3. Pool Items HTML (Pool 依然保持网格布局，方便查找)
             const poolItemsHtml = state.poolItems.map(item => `
                 <div class="relative group">
                      ${renderItem(item, null, 'pool')}
@@ -205,7 +195,7 @@
                             ${ICONS.edit}
                         </div>
                     </div>
-                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽排序。双击删除。</p>
+                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽至右侧线上吸附。图片可重叠。</p>
                 </header>
 
                 <!-- 主排序区 -->
@@ -229,13 +219,6 @@
 
                         <!-- 扩展的工具按钮组 -->
                         <div class="flex flex-wrap gap-2 w-full md:w-auto justify-end">
-                            <button onclick="addSpecialItem('divider-v')" class="px-3 py-2 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 rounded transition-colors flex items-center gap-1" title="插入竖向分隔符">
-                                ${ICONS.dividerV} <span class="hidden sm:inline">插入竖线</span>
-                            </button>
-                            <button onclick="addSpecialItem('divider-h')" class="px-3 py-2 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 rounded transition-colors flex items-center gap-1" title="插入横向换行线">
-                                ${ICONS.dividerH} <span class="hidden sm:inline">插入横线</span>
-                            </button>
-                            <div class="w-px h-6 bg-gray-600 mx-1"></div>
                             <button onclick="requestReset()" class="px-3 py-2 text-xs bg-blue-900/40 hover:bg-blue-800 text-blue-100 border border-blue-800 rounded transition-colors flex items-center gap-1">
                                 ${ICONS.rotate} <span class="hidden sm:inline">重置</span>
                             </button>
@@ -267,7 +250,7 @@
                             <input type="file" id="fileInput" class="hidden" multiple accept="image/*" onchange="handleFileUpload(this)">
                         </div>
                         ${poolItemsHtml}
-                        ${state.poolItems.length === 0 ? `<div class="flex-1 h-24 flex items-center justify-center text-gray-600 select-none pointer-events-none text-sm">点击左侧方块导入图片，或使用上方按钮添加分隔符</div>` : ''}
+                        ${state.poolItems.length === 0 ? `<div class="flex-1 h-24 flex items-center justify-center text-gray-600 select-none pointer-events-none text-sm">点击左侧方块导入图片</div>` : ''}
                     </div>
                 </div>
             `;
@@ -280,17 +263,6 @@
         function updateTierLabel(id, val) {
             const tier = state.tiers.find(t => t.id === id);
             if(tier) tier.label = val;
-        }
-
-        // 添加特殊分隔符
-        function addSpecialItem(type) {
-            const newItem = {
-                id: `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                type: type, // 'divider-v' or 'divider-h'
-                name: type === 'divider-v' ? '竖线' : '横线'
-            };
-            state.poolItems.push(newItem);
-            render();
         }
 
         function handleFileUpload(input) {
@@ -378,13 +350,6 @@
                 // 尝试检测是否 Drop 在了某个 Item 上以实现插入
                 const dropTargetItem = e.target.closest('[draggable="true"]');
                 if (dropTargetItem) {
-                    // 获取被放置目标的 ID
-                    // 这里比较 hacky，因为我们在 HTML onclick 里写了 ID，但 DOM 属性没写
-                    // 我们可以根据渲染顺序推断，或者解析 HTML，或者像 React 那样
-                    // 简单起见：目前逻辑是追加到最后。
-                    // 为了支持排序，用户通常会把东西拖出来再拖回去。
-                    // 进阶版：获取 dropTarget 的索引
-                    // 这里暂时保持追加，等下一次迭代优化“插入排序”
                     targetList.push(draggedItem);
                 } else {
                     targetList.push(draggedItem);
