@@ -1,426 +1,390 @@
-'use client'; // 必须添加：标记为客户端组件以支持 Hooks
-
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Trash2, GripVertical, Edit3, RotateCcw } from 'lucide-react';
-
-// 定义初始层级配置
-const INITIAL_TIERS = [
-  { id: 'tier-1', label: '夯', color: 'bg-red-600', textColor: 'text-white', items: [] },
-  { id: 'tier-2', label: '顶级', color: 'bg-orange-500', textColor: 'text-white', items: [] },
-  { id: 'tier-3', label: '人上人', color: 'bg-yellow-400', textColor: 'text-black', items: [] },
-  { id: 'tier-4', label: 'NPC', color: 'bg-[#eecfa1]', textColor: 'text-black', items: [] },
-  { id: 'tier-5', label: '拉完了', color: 'bg-white', textColor: 'text-black', items: [] },
-];
-
-export default function GenericRanker() {
-  const [tiers, setTiers] = useState(INITIAL_TIERS);
-  const [poolItems, setPoolItems] = useState([]);
-  const [draggedItem, setDraggedItem] = useState(null);
-  const [dragSource, setDragSource] = useState(null); 
-  
-  // 自定义标题状态
-  const [mainTitle, setMainTitle] = useState("万物分级排序器");
-  const [poolTitle, setPoolTitle] = useState("备选图片库");
-  
-  // 模态框状态 (替代 window.confirm)
-  const [modalState, setModalState] = useState({ type: null, isOpen: false }); 
-  // type: 'reset' | 'clear' | null
-
-  const fileInputRef = useRef(null);
-
-  // --- 内存管理：组件卸载时清理所有 URL ---
-  useEffect(() => {
-    return () => {
-      // 清理 pool 中的图片
-      poolItems.forEach(item => URL.revokeObjectURL(item.url));
-      // 清理 tiers 中的图片
-      tiers.forEach(tier => {
-        tier.items.forEach(item => URL.revokeObjectURL(item.url));
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // --- 核心逻辑 ---
-
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    const newItems = files.map((file) => ({
-      id: `img-${Date.now()}-${Math.random()}`,
-      url: URL.createObjectURL(file), // 创建 Blob URL
-      name: file.name
-    }));
-
-    setPoolItems((prev) => [...prev, ...newItems]);
-    // 重置 input value 允许重复上传同一文件
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleDragStart = (e, item, source) => {
-    setDraggedItem(item);
-    setDragSource(source);
-    // 设置拖拽效果，兼容性处理
-    e.dataTransfer.effectAllowed = 'move';
-    // 某些浏览器需要设置数据才能拖拽
-    e.dataTransfer.setData('text/plain', item.id);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e, targetTierId, targetItemId = null) => {
-    e.preventDefault();
-    e.stopPropagation(); 
-    
-    if (!draggedItem) return;
-
-    let newPool = [...poolItems];
-    let newTiers = tiers.map(t => ({ ...t, items: [...t.items] }));
-
-    // 1. 移除源位置的物品
-    if (dragSource === 'pool') {
-      newPool = newPool.filter(i => i.id !== draggedItem.id);
-    } else {
-      const sourceTierIndex = newTiers.findIndex(t => t.id === dragSource);
-      if (sourceTierIndex !== -1) {
-        newTiers[sourceTierIndex].items = newTiers[sourceTierIndex].items.filter(i => i.id !== draggedItem.id);
-      }
-    }
-
-    // 2. 插入到目标位置
-    if (targetTierId === 'pool') {
-      if (targetItemId) {
-        const targetIndex = newPool.findIndex(i => i.id === targetItemId);
-        if (targetIndex !== -1) {
-          newPool.splice(targetIndex, 0, draggedItem);
-        } else {
-          newPool.push(draggedItem);
-        }
-      } else {
-        newPool.push(draggedItem);
-      }
-    } else {
-      const targetTierIndex = newTiers.findIndex(t => t.id === targetTierId);
-      if (targetTierIndex !== -1) {
-        if (targetItemId) {
-          const targetItemIndex = newTiers[targetTierIndex].items.findIndex(i => i.id === targetItemId);
-          if (targetItemIndex !== -1) {
-             newTiers[targetTierIndex].items.splice(targetItemIndex, 0, draggedItem);
-          } else {
-             newTiers[targetTierIndex].items.push(draggedItem);
-          }
-        } else {
-          newTiers[targetTierIndex].items.push(draggedItem);
-        }
-      }
-    }
-
-    setPoolItems(newPool);
-    setTiers(newTiers);
-    setDraggedItem(null);
-    setDragSource(null);
-  };
-
-  const handleDeleteItem = (itemId, source) => {
-    // 查找并释放内存
-    let itemToDelete = null;
-    
-    if (source === 'pool') {
-      itemToDelete = poolItems.find(i => i.id === itemId);
-      if (itemToDelete) URL.revokeObjectURL(itemToDelete.url);
-      setPoolItems((prev) => prev.filter((i) => i.id !== itemId));
-    } else {
-      setTiers((prevTiers) =>
-        prevTiers.map((tier) => {
-            const item = tier.items.find(i => i.id === itemId);
-            if (item) URL.revokeObjectURL(item.url); // 释放内存
-            return {
-                ...tier,
-                items: tier.items.filter((i) => i.id !== itemId),
-            };
-        })
-      );
-    }
-  };
-
-  const handleTierLabelChange = (tierId, newLabel) => {
-    setTiers(prev => prev.map(t => t.id === tierId ? { ...t, label: newLabel } : t));
-  };
-
-  // --- 交互逻辑 (使用 Modal) ---
-
-  // 1. 点击“重置排序”按钮
-  const requestResetSorting = () => {
-    if (tiers.every(t => t.items.length === 0)) return; 
-    setModalState({ type: 'reset', isOpen: true });
-  };
-
-  // 2. 点击“清空所有”区域
-  const requestDeleteAll = () => {
-    if(poolItems.length === 0 && tiers.every(t => t.items.length === 0)) return; 
-    setModalState({ type: 'clear', isOpen: true });
-  };
-
-  // 执行具体的确认操作
-  const handleConfirmAction = () => {
-    if (modalState.type === 'reset') {
-        // 重置逻辑：将所有已排序的物品移动回池子
-        const allSortedItems = tiers.flatMap(t => t.items);
-        setPoolItems(prev => [...prev, ...allSortedItems]);
-        setTiers(prev => prev.map(t => ({ ...t, items: [] })));
-    } else if (modalState.type === 'clear') {
-        // 清空逻辑：释放所有内存并清空数组
-        poolItems.forEach(i => URL.revokeObjectURL(i.url));
-        tiers.forEach(t => t.items.forEach(i => URL.revokeObjectURL(i.url)));
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通用分级排序器</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定义滚动条样式 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
         
-        setPoolItems([]);
-        setTiers(prev => prev.map(t => ({ ...t, items: [] })));
-    }
-    setModalState({ type: null, isOpen: false });
-  };
+        .drag-over { background-color: rgba(255, 255, 255, 0.1) !important; }
+        textarea:focus { outline: none; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col items-center p-4">
 
-  const handleCancelAction = () => {
-    setModalState({ type: null, isOpen: false });
-  };
+    <!-- 应用挂载点 -->
+    <div id="app" class="w-full max-w-5xl flex flex-col items-center gap-6"></div>
 
-  // 3. 拖拽至删除框 (单个删除) - 不需要确认
-  const handleDropToTrash = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!draggedItem) return;
+    <!-- 逻辑脚本 -->
+    <script>
+        // --- 图标 SVG 配置 ---
+        const ICONS = {
+            upload: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+            trash: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+            grip: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>`,
+            edit: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
+            rotate: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`
+        };
 
-    // 释放当前拖拽项的 URL 内存
-    URL.revokeObjectURL(draggedItem.url);
+        // --- 初始数据 ---
+        const INITIAL_TIERS = [
+            { id: 'tier-1', label: '夯', color: 'bg-red-600', textColor: 'text-white', items: [] },
+            { id: 'tier-2', label: '顶级', color: 'bg-orange-500', textColor: 'text-white', items: [] },
+            { id: 'tier-3', label: '人上人', color: 'bg-yellow-400', textColor: 'text-black', items: [] },
+            { id: 'tier-4', label: 'NPC', color: 'bg-[#eecfa1]', textColor: 'text-black', items: [] },
+            { id: 'tier-5', label: '拉完了', color: 'bg-white', textColor: 'text-black', items: [] },
+        ];
 
-    if (dragSource === 'pool') {
-        setPoolItems(prev => prev.filter(i => i.id !== draggedItem.id));
-    } else {
-        setTiers(prev => prev.map(t => {
-            if (t.id === dragSource) {
-                return { ...t, items: t.items.filter(i => i.id !== draggedItem.id) };
+        // --- 全局状态 ---
+        const state = {
+            tiers: JSON.parse(JSON.stringify(INITIAL_TIERS)),
+            poolItems: [],
+            mainTitle: "万物分级排序器",
+            poolTitle: "备选图片库",
+            modal: { type: null, isOpen: false },
+            draggedItem: null,
+            dragSource: null
+        };
+
+        // --- 核心逻辑 ---
+
+        // 渲染函数：每次状态更新都重新渲染 HTML（模拟 React）
+        function render() {
+            const app = document.getElementById('app');
+            
+            // 1. Modal HTML
+            let modalHtml = '';
+            if (state.modal.isOpen) {
+                const isReset = state.modal.type === 'reset';
+                modalHtml = `
+                <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+                    <div class="relative bg-gray-800 border border-gray-600 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+                        <div class="p-6">
+                            <h3 class="text-xl font-bold text-white mb-2">${isReset ? '重置排序?' : '⚠️ 彻底清空?'}</h3>
+                            <p class="text-gray-300 text-sm leading-relaxed mb-6">
+                                ${isReset 
+                                    ? '这将把所有已分级的图片移回下方的备选库，不会删除图片。'
+                                    : '这将永久删除当前所有的图片（包括备选库和已排序的），此操作无法撤销。'
+                                }
+                            </p>
+                            <div class="flex justify-end gap-3">
+                                <button onclick="closeModal()" class="px-4 py-2 rounded text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">取消</button>
+                                <button onclick="confirmModal()" class="px-4 py-2 rounded text-sm font-bold text-white shadow-lg transition-colors ${isReset ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}">
+                                    ${isReset ? '确认重置' : '确认清空'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
             }
-            return t;
-        }));
-    }
 
-    setDraggedItem(null);
-    setDragSource(null);
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-200 font-sans p-4 flex flex-col items-center relative">
-      
-      {/* --- 自定义模态框 (Modal) --- */}
-      {modalState.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* 遮罩层 */}
-            <div 
-                className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
-                onClick={handleCancelAction}
-            />
-            {/* 弹窗内容 */}
-            <div className="relative bg-gray-800 border border-gray-600 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 opacity-100 animate-in fade-in zoom-in duration-200">
-                <div className="p-6">
-                    <h3 className="text-xl font-bold text-white mb-2">
-                        {modalState.type === 'reset' ? '重置排序?' : '⚠️ 彻底清空?'}
-                    </h3>
-                    <p className="text-gray-300 text-sm leading-relaxed mb-6">
-                        {modalState.type === 'reset' 
-                            ? '这将把所有已分级的图片移回下方的备选库，不会删除图片。'
-                            : '这将永久删除当前所有的图片（包括备选库和已排序的），此操作无法撤销。'
-                        }
-                    </p>
-                    <div className="flex justify-end gap-3">
-                        <button 
-                            onClick={handleCancelAction}
-                            className="px-4 py-2 rounded text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-                        >
-                            取消
-                        </button>
-                        <button 
-                            onClick={handleConfirmAction}
-                            className={`px-4 py-2 rounded text-sm font-bold text-white shadow-lg transition-colors ${
-                                modalState.type === 'reset' 
-                                    ? 'bg-blue-600 hover:bg-blue-700' 
-                                    : 'bg-red-600 hover:bg-red-700'
-                            }`}
-                        >
-                            {modalState.type === 'reset' ? '确认重置' : '确认清空'}
-                        </button>
+            // 2. Tiers HTML
+            const tiersHtml = state.tiers.map(tier => `
+                <div class="flex min-h-[120px] border-b border-gray-800 last:border-b-0">
+                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-800 group relative">
+                        <textarea 
+                            oninput="updateTierLabel('${tier.id}', this.value)"
+                            class="w-full h-full bg-transparent text-center resize-none border-none focus:ring-0 p-2 flex items-center justify-center overflow-hidden font-black text-lg sm:text-xl leading-tight placeholder-white/50 focus:bg-black/10 transition-colors cursor-text"
+                            style="line-height: 1.2; padding-top: 35%">${tier.label}</textarea>
+                    </div>
+                    <div 
+                        class="drop-zone flex-1 bg-[#1a1a1a] p-2 flex flex-wrap content-start gap-2 transition-colors duration-200 hover:bg-[#252525]"
+                        data-type="tier"
+                        data-id="${tier.id}"
+                        ondragover="handleDragOver(event)"
+                        ondrop="handleDrop(event, '${tier.id}')"
+                    >
+                        ${tier.items.map(item => `
+                            <div 
+                                class="relative group w-20 h-20 sm:w-24 sm:h-24 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
+                                draggable="true"
+                                ondragstart="handleDragStart(event, '${item.id}', '${tier.id}')"
+                                ondblclick="deleteItem('${item.id}', '${tier.id}')"
+                            >
+                                <img src="${item.url}" class="w-full h-full object-cover rounded shadow-md pointer-events-none select-none">
+                                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded"></div>
+                            </div>
+                        `).join('')}
+                        ${tier.items.length === 0 ? `<div class="w-full h-full min-h-[80px] flex items-center justify-center pointer-events-none"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none">拖拽至此</span></div>` : ''}
                     </div>
                 </div>
-            </div>
-        </div>
-      )}
+            `).join('');
 
-      {/* 标题区域：可编辑 */}
-      <header className="mb-6 text-center w-full max-w-3xl">
-        <div className="relative group inline-block w-full">
-          <input 
-            type="text"
-            value={mainTitle}
-            onChange={(e) => setMainTitle(e.target.value)}
-            className="text-3xl sm:text-4xl font-bold text-white bg-transparent text-center w-full border-b-2 border-transparent hover:border-gray-600 focus:border-blue-500 focus:outline-none transition-all px-2 py-1"
-            placeholder="输入标题..."
-          />
-          <Edit3 className="w-5 h-5 text-gray-600 absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-        </div>
-        <p className="text-gray-400 text-sm mt-2">导入图片，拖拽排序。点击文字可修改标题和分类。</p>
-      </header>
-
-      {/* 主排序区域 */}
-      <div className="w-full max-w-5xl bg-black border-4 border-gray-800 rounded-lg overflow-hidden shadow-2xl mb-8">
-        {tiers.map((tier) => (
-          <div 
-            key={tier.id} 
-            className="flex min-h-[120px] border-b border-gray-800 last:border-b-0"
-          >
-            {/* 左侧标签：可编辑 */}
-            <div 
-              className={`${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-800 group relative`}
-            >
-              <textarea
-                value={tier.label}
-                onChange={(e) => handleTierLabelChange(tier.id, e.target.value)}
-                className={`w-full h-full bg-transparent text-center resize-none border-none focus:ring-0 p-2 flex items-center justify-center overflow-hidden font-black text-lg sm:text-xl leading-tight placeholder-white/50 focus:bg-black/10 transition-colors cursor-text`}
-                style={{ lineHeight: '1.2' }}
-              />
-            </div>
-
-            {/* 右侧放置区域 */}
-            <div 
-              className="flex-1 bg-[#1a1a1a] p-2 flex flex-wrap content-start gap-2 transition-colors duration-200 hover:bg-[#252525]"
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, tier.id, null)} 
-            >
-              {tier.items.map((item) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, item, tier.id)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, tier.id, item.id)}
-                  onDoubleClick={() => handleDeleteItem(item.id, tier.id)}
-                  className="relative group w-20 h-20 sm:w-24 sm:h-24 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
-                >
-                  <img 
-                    src={item.url} 
-                    alt="item" 
-                    className="w-full h-full object-cover rounded shadow-md pointer-events-none select-none"
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded" />
-                </div>
-              ))}
-              
-              {/* 占位文本 */}
-              {tier.items.length === 0 && (
-                <div className="w-full h-full min-h-[80px] flex items-center justify-center pointer-events-none">
-                  <span className="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none">
-                    拖拽至此
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 底部备选区 */}
-      <div className="w-full max-w-5xl bg-gray-800 rounded-xl p-4 shadow-xl border border-gray-700 flex flex-col gap-4">
-        
-        {/* 工具栏 */}
-        <div className="flex flex-col sm:flex-row justify-between items-center pb-2 border-b border-gray-700 gap-4 sm:gap-0">
-            {/* 左侧：备选库标题 */}
-            <div className="flex items-center gap-2 group self-start sm:self-auto">
-                <GripVertical className="w-5 h-5 text-gray-500" />
-                <input 
-                  value={poolTitle}
-                  onChange={(e) => setPoolTitle(e.target.value)}
-                  className="text-xl font-bold text-white bg-transparent border-b border-transparent hover:border-gray-500 focus:border-white focus:outline-none transition-colors w-40 sm:w-64"
-                />
-                <Edit3 className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-
-            {/* 右侧：功能按钮区 */}
-            <div className="flex gap-3 items-stretch self-end sm:self-auto">
-                 {/* 重置排序按钮 */}
-                 <button 
-                    onClick={requestResetSorting}
-                    className="px-4 py-2 text-xs sm:text-sm bg-blue-900/40 hover:bg-blue-800 text-blue-100 border border-blue-800 rounded transition-colors flex items-center gap-2"
-                    title="将上面所有图片放回下方备选库"
-                >
-                    <RotateCcw className="w-4 h-4" /> 
-                    重置排序
-                </button>
-
-                {/* ⚠️ 删除框 (兼具拖拽删除目标 和 点击清空按钮) */}
+            // 3. Pool Items HTML
+            const poolItemsHtml = state.poolItems.map(item => `
                 <div 
-                    onClick={requestDeleteAll}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDropToTrash}
-                    className="group relative px-4 py-2 min-w-[140px] bg-red-900/20 hover:bg-red-900/50 border-2 border-dashed border-red-800 hover:border-red-500 rounded cursor-pointer transition-all flex items-center justify-center gap-2 text-red-300 hover:text-white"
+                    class="w-20 h-20 sm:w-24 sm:h-24 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform relative group"
+                    draggable="true"
+                    ondragstart="handleDragStart(event, '${item.id}', 'pool')"
+                    ondblclick="deleteItem('${item.id}', 'pool')"
                 >
-                    <Trash2 className="w-5 h-5" />
-                    <div className="flex flex-col items-start leading-none">
-                        <span className="text-xs font-bold">拖拽至此删除</span>
-                        <span className="text-[10px] opacity-70 group-hover:opacity-100">或点击清空所有</span>
+                    <img src="${item.url}" class="w-full h-full object-cover rounded shadow-sm pointer-events-none select-none">
+                </div>
+            `).join('');
+
+            // 4. Main Template
+            app.innerHTML = `
+                ${modalHtml}
+                
+                <!-- 头部 -->
+                <header class="text-center w-full max-w-3xl pt-6">
+                    <div class="relative group inline-block w-full">
+                        <input 
+                            value="${state.mainTitle}"
+                            oninput="updateMainTitle(this.value)"
+                            class="text-3xl sm:text-4xl font-bold text-white bg-transparent text-center w-full border-b-2 border-transparent hover:border-gray-600 focus:border-blue-500 focus:outline-none transition-all px-2 py-1"
+                            placeholder="输入标题..."
+                        />
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity text-gray-600">
+                            ${ICONS.edit}
+                        </div>
+                    </div>
+                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽排序。双击图片删除，点击文字可修改。</p>
+                </header>
+
+                <!-- 主排序区 -->
+                <div class="w-full border-4 border-gray-800 rounded-lg overflow-hidden shadow-2xl bg-black">
+                    ${tiersHtml}
+                </div>
+
+                <!-- 备选区 -->
+                <div class="w-full bg-gray-800 rounded-xl p-4 shadow-xl border border-gray-700 flex flex-col gap-4">
+                    <!-- 工具栏 -->
+                    <div class="flex flex-col sm:flex-row justify-between items-center pb-2 border-b border-gray-700 gap-4 sm:gap-0">
+                        <div class="flex items-center gap-2 group w-full sm:w-auto">
+                            <div class="text-gray-500">${ICONS.grip}</div>
+                            <input 
+                                value="${state.poolTitle}"
+                                oninput="updatePoolTitle(this.value)"
+                                class="text-xl font-bold text-white bg-transparent border-b border-transparent hover:border-gray-500 focus:border-white focus:outline-none transition-colors w-full sm:w-64"
+                            />
+                            <div class="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500">${ICONS.edit}</div>
+                        </div>
+
+                        <div class="flex gap-3 w-full sm:w-auto justify-end">
+                            <button onclick="requestReset()" class="px-4 py-2 text-xs sm:text-sm bg-blue-900/40 hover:bg-blue-800 text-blue-100 border border-blue-800 rounded transition-colors flex items-center gap-2">
+                                ${ICONS.rotate} 重置排序
+                            </button>
+                            <div 
+                                onclick="requestClear()"
+                                ondragover="handleDragOver(event)"
+                                ondrop="handleTrashDrop(event)"
+                                class="group relative px-4 py-2 min-w-[140px] bg-red-900/20 hover:bg-red-900/50 border-2 border-dashed border-red-800 hover:border-red-500 rounded cursor-pointer transition-all flex items-center justify-center gap-2 text-red-300 hover:text-white"
+                            >
+                                ${ICONS.trash}
+                                <div class="flex flex-col items-start leading-none">
+                                    <span class="text-xs font-bold">拖拽至此删除</span>
+                                    <span class="text-[10px] opacity-70 group-hover:opacity-100">或点击清空所有</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 图片池 -->
+                    <div 
+                        class="drop-zone min-h-[140px] bg-[#111] rounded-lg p-4 flex flex-wrap gap-3 items-start border-2 border-dashed border-gray-700"
+                        data-type="pool"
+                        ondragover="handleDragOver(event)"
+                        ondrop="handleDrop(event, 'pool')"
+                    >
+                        <div 
+                            onclick="document.getElementById('fileInput').click()"
+                            class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-600 rounded cursor-pointer transition-all"
+                        >
+                            <div class="mb-1">${ICONS.upload}</div>
+                            <span class="text-xs">导入</span>
+                            <input type="file" id="fileInput" class="hidden" multiple accept="image/*" onchange="handleFileUpload(this)">
+                        </div>
+                        ${poolItemsHtml}
+                        ${state.poolItems.length === 0 ? `<div class="flex-1 h-24 flex items-center justify-center text-gray-600 select-none pointer-events-none text-sm">点击左侧方块批量导入图片</div>` : ''}
                     </div>
                 </div>
-            </div>
-        </div>
+            `;
+        }
 
-        {/* 图片池 */}
-        <div 
-            className="min-h-[140px] bg-[#111] rounded-lg p-4 flex flex-wrap gap-3 items-start border-2 border-dashed border-gray-700"
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'pool', null)}
-        >
-            <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 flex flex-col items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-600 rounded cursor-pointer transition-all"
-            >
-                <Upload className="w-6 h-6 mb-1" />
-                <span className="text-xs">导入</span>
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileUpload} 
-                    className="hidden" 
-                    multiple 
-                    accept="image/*"
-                />
-            </div>
+        // --- 交互处理器 ---
 
-            {poolItems.map((item) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, item, 'pool')}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, 'pool', item.id)}
-                  onDoubleClick={() => handleDeleteItem(item.id, 'pool')}
-                  className="w-20 h-20 sm:w-24 sm:h-24 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform relative group"
-                >
-                  <img 
-                    src={item.url} 
-                    alt="uploaded" 
-                    className="w-full h-full object-cover rounded shadow-sm pointer-events-none select-none"
-                  />
-                </div>
-            ))}
+        function updateMainTitle(val) { state.mainTitle = val; }
+        function updatePoolTitle(val) { state.poolTitle = val; }
+        function updateTierLabel(id, val) {
+            const tier = state.tiers.find(t => t.id === id);
+            if(tier) tier.label = val;
+        }
 
-            {poolItems.length === 0 && (
-                <div className="flex-1 h-24 flex items-center justify-center text-gray-600 select-none pointer-events-none text-sm">
-                    点击左侧方块批量导入图片
-                </div>
-            )}
-        </div>
-      </div>
-    </div>
-  );
-}
+        function handleFileUpload(input) {
+            const files = Array.from(input.files);
+            if (files.length === 0) return;
+            
+            const newItems = files.map(file => ({
+                id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                url: URL.createObjectURL(file),
+                name: file.name
+            }));
+            
+            state.poolItems.push(...newItems);
+            input.value = ''; // Reset input
+            render();
+        }
+
+        // --- 拖拽逻辑 ---
+
+        function handleDragStart(e, itemId, source) {
+            // 查找 item 对象
+            let item;
+            if (source === 'pool') {
+                item = state.poolItems.find(i => i.id === itemId);
+            } else {
+                const tier = state.tiers.find(t => t.id === source);
+                item = tier ? tier.items.find(i => i.id === itemId) : null;
+            }
+
+            if (item) {
+                state.draggedItem = item;
+                state.dragSource = source;
+                e.dataTransfer.effectAllowed = 'move';
+                // 必须设置数据，否则 Firefox 可能无法拖拽
+                e.dataTransfer.setData('text/plain', itemId);
+                e.target.style.opacity = '0.5';
+            }
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            // 添加高亮效果
+            const zone = e.target.closest('.drop-zone');
+            if (zone) {
+                document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('bg-gray-700'));
+            }
+        }
+
+        function handleDrop(e, targetId) {
+            e.preventDefault();
+            const draggedItem = state.draggedItem;
+            const source = state.dragSource;
+
+            if (!draggedItem) return;
+
+            // 1. 从源移除
+            if (source === 'pool') {
+                state.poolItems = state.poolItems.filter(i => i.id !== draggedItem.id);
+            } else {
+                const sourceTier = state.tiers.find(t => t.id === source);
+                if (sourceTier) {
+                    sourceTier.items = sourceTier.items.filter(i => i.id !== draggedItem.id);
+                }
+            }
+
+            // 2. 添加到目标
+            if (targetId === 'pool') {
+                state.poolItems.push(draggedItem);
+            } else {
+                const targetTier = state.tiers.find(t => t.id === targetId);
+                if (targetTier) {
+                    targetTier.items.push(draggedItem);
+                }
+            }
+
+            // 重置状态
+            state.draggedItem = null;
+            state.dragSource = null;
+            render();
+        }
+
+        function handleTrashDrop(e) {
+            e.preventDefault();
+            const draggedItem = state.draggedItem;
+            const source = state.dragSource;
+            
+            if (!draggedItem) return;
+
+            // 仅仅从源移除，不添加到任何地方 = 删除
+            if (source === 'pool') {
+                state.poolItems = state.poolItems.filter(i => i.id !== draggedItem.id);
+            } else {
+                const sourceTier = state.tiers.find(t => t.id === source);
+                if (sourceTier) {
+                    sourceTier.items = sourceTier.items.filter(i => i.id !== draggedItem.id);
+                }
+            }
+            
+            // 释放 URL
+            URL.revokeObjectURL(draggedItem.url);
+
+            state.draggedItem = null;
+            state.dragSource = null;
+            render();
+        }
+
+        function deleteItem(itemId, source) {
+            if (source === 'pool') {
+                const item = state.poolItems.find(i => i.id === itemId);
+                if(item) URL.revokeObjectURL(item.url);
+                state.poolItems = state.poolItems.filter(i => i.id !== itemId);
+            } else {
+                const tier = state.tiers.find(t => t.id === source);
+                if (tier) {
+                    const item = tier.items.find(i => i.id === itemId);
+                    if(item) URL.revokeObjectURL(item.url);
+                    tier.items = tier.items.filter(i => i.id !== itemId);
+                }
+            }
+            render();
+        }
+
+        // --- Modal 逻辑 ---
+
+        function requestReset() {
+            const hasItems = state.tiers.some(t => t.items.length > 0);
+            if (!hasItems) return;
+            state.modal = { type: 'reset', isOpen: true };
+            render();
+        }
+
+        function requestClear() {
+            const hasItems = state.poolItems.length > 0 || state.tiers.some(t => t.items.length > 0);
+            if (!hasItems) return;
+            state.modal = { type: 'clear', isOpen: true };
+            render();
+        }
+
+        function closeModal() {
+            state.modal = { type: null, isOpen: false };
+            render();
+        }
+
+        function confirmModal() {
+            if (state.modal.type === 'reset') {
+                // 将所有 tier items 移回 pool
+                const allTierItems = state.tiers.flatMap(t => t.items);
+                state.poolItems.push(...allTierItems);
+                state.tiers.forEach(t => t.items = []);
+            } else if (state.modal.type === 'clear') {
+                // 清空所有
+                [...state.poolItems, ...state.tiers.flatMap(t => t.items)].forEach(item => {
+                    URL.revokeObjectURL(item.url);
+                });
+                state.poolItems = [];
+                state.tiers.forEach(t => t.items = []);
+            }
+            closeModal();
+        }
+
+        // --- 初始化 ---
+        render();
+
+        // 防止浏览器默认的图片拖拽行为干扰
+        document.addEventListener('dragover', e => e.preventDefault());
+        document.addEventListener('drop', e => e.preventDefault());
+
+    </script>
+</body>
+</html>
