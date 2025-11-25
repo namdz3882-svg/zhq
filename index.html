@@ -104,8 +104,9 @@
                 const isCenter = item.customAlign === 'center';
                 
                 if (isCenter) {
-                    // 居中模式：self-center 让它垂直居中，y轴无偏移
-                    posClass = `self-center -ml-6 first:ml-0 hover:scale-110 hover:z-[100] hover:shadow-2xl z-10 border-2 border-[#2a2a2a] transition-all duration-200 ease-out`;
+                    // 居中模式：self-center 让它垂直居中
+                    // 修改：添加 -translate-y-3 让视觉重心更高一点 (约12px)
+                    posClass = `self-center -translate-y-3 -ml-6 first:ml-0 hover:scale-110 hover:z-[100] hover:shadow-2xl z-10 border-2 border-[#2a2a2a] transition-all duration-200 ease-out`;
                 } else {
                     // 骑线模式 (默认)：向下偏移 50%
                     posClass = `translate-y-1/2 -ml-6 first:ml-0 hover:translate-y-0 hover:scale-110 hover:z-[100] hover:shadow-2xl z-10 border-2 border-[#2a2a2a] transition-all duration-200 ease-out`;
