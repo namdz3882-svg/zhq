@@ -94,8 +94,9 @@
             `;
 
             // 如果是在 Tier 中，应用叠压样式 (-ml-6) 和 hover 效果
+            // 修改 hover:-translate-y-2 为更明显的上浮，模拟从架子上拿起来
             const tierStyles = tierId 
-                ? `-ml-6 first:ml-0 hover:-translate-y-2 hover:scale-110 hover:z-50 hover:shadow-2xl z-10 border-2 border-[#1a1a1a]` 
+                ? `-ml-6 first:ml-0 hover:-translate-y-4 hover:scale-110 hover:z-50 hover:shadow-2xl z-10 border-2 border-[#1a1a1a] origin-bottom` 
                 : ``;
 
             return `
@@ -141,9 +142,9 @@
 
             // 2. Tiers HTML
             const tiersHtml = state.tiers.map(tier => `
-                <div class="flex min-h-[120px] border-b border-gray-800 last:border-b-0 relative overflow-hidden">
+                <div class="flex min-h-[140px] border-b-4 border-gray-800 last:border-b-0 relative overflow-hidden">
                     <!-- 左侧标签 -->
-                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-800 group relative z-20">
+                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r-4 border-gray-800 group relative z-20">
                         <textarea 
                             oninput="updateTierLabel('${tier.id}', this.value)"
                             class="w-full h-full bg-transparent text-center resize-none border-none focus:ring-0 p-2 flex items-center justify-center overflow-hidden font-black text-lg sm:text-xl leading-tight placeholder-white/50 focus:bg-black/10 transition-colors cursor-text"
@@ -152,26 +153,23 @@
                     
                     <!-- 放置区域 -->
                     <div 
-                        class="drop-zone flex-1 bg-[#1a1a1a] p-4 flex items-center gap-0 overflow-x-auto tier-scroll relative"
+                        class="drop-zone flex-1 bg-[#1a1a1a] px-4 pb-1 pt-8 flex items-end gap-0 overflow-x-auto tier-scroll relative"
                         data-type="tier"
                         data-id="${tier.id}"
                         ondragover="handleDragOver(event)"
                         ondrop="handleDrop(event, '${tier.id}')"
                     >
-                        <!-- 中间吸附线 (视觉装饰) -->
-                        <div class="absolute left-0 right-0 top-1/2 h-1 bg-gray-700/50 -translate-y-1/2 pointer-events-none z-0"></div>
-                        
-                        <!-- 物品列表 -->
-                        <div class="flex items-center pl-4 pr-4 z-10 w-full min-w-max">
+                        <!-- 物品列表 (items-end 确保底部对齐) -->
+                        <div class="flex items-end pl-4 pr-4 z-10 w-full min-w-max">
                             ${tier.items.map(item => renderItem(item, tier.id, tier.id)).join('')}
                         </div>
 
-                        ${tier.items.length === 0 ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none bg-[#1a1a1a] px-2">拖拽至此吸附</span></div>` : ''}
+                        ${tier.items.length === 0 ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none bg-[#1a1a1a] px-2 mb-4">拖拽至底部吸附</span></div>` : ''}
                     </div>
                 </div>
             `).join('');
 
-            // 3. Pool Items HTML (Pool 依然保持网格布局，方便查找)
+            // 3. Pool Items HTML
             const poolItemsHtml = state.poolItems.map(item => `
                 <div class="relative group">
                      ${renderItem(item, null, 'pool')}
@@ -195,7 +193,7 @@
                             ${ICONS.edit}
                         </div>
                     </div>
-                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽至右侧线上吸附。图片可重叠。</p>
+                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽至行底吸附。图片可左右叠压。</p>
                 </header>
 
                 <!-- 主排序区 -->
