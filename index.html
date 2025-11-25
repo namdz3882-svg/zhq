@@ -26,7 +26,7 @@
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 自定义滚动条样式 */
+        /* 自定义滚动条样式 (保留用于备选库，主区域已取消滚动) */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1f2937; }
         ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
@@ -41,10 +41,9 @@
             to { opacity: 1; transform: scale(1); }
         }
 
-        /* 隐藏横向滚动条但保持功能 (可选) */
-        .tier-scroll {
-            scrollbar-width: thin;
-            scrollbar-color: #4b5563 #1a1a1a;
+        /* 关键：允许子元素溢出显示 (用于hover浮起效果) */
+        .tier-container {
+            overflow: visible; 
         }
     </style>
 </head>
@@ -93,19 +92,35 @@
                 ondblclick="deleteItem('${item.id}', '${source}')"
             `;
 
-            // 如果是在 Tier 中，应用叠压样式 (-ml-6) 和 hover 效果
-            // 修改 hover:-translate-y-2 为更明显的上浮，模拟从架子上拿起来
-            const tierStyles = tierId 
-                ? `-ml-6 first:ml-0 hover:-translate-y-4 hover:scale-110 hover:z-50 hover:shadow-2xl z-10 border-2 border-[#1a1a1a] origin-bottom` 
-                : ``;
+            // 核心样式逻辑：
+            // 1. alignment: 如果 item.customAlign 是 'center'，则使用 self-center；否则（默认或 'line'）往下偏移吸附底线。
+            // 2. 叠压: -ml-6
+            // 3. 悬停: 统一归位、放大、置顶
+            
+            let posClass = '';
+            
+            if (tierId) {
+                // 默认为 line (吸附底线)
+                const isCenter = item.customAlign === 'center';
+                
+                if (isCenter) {
+                    // 居中模式：self-center 让它垂直居中，y轴无偏移
+                    posClass = `self-center -ml-6 first:ml-0 hover:scale-110 hover:z-[100] hover:shadow-2xl z-10 border-2 border-[#2a2a2a] transition-all duration-200 ease-out`;
+                } else {
+                    // 骑线模式 (默认)：向下偏移 50%
+                    posClass = `translate-y-1/2 -ml-6 first:ml-0 hover:translate-y-0 hover:scale-110 hover:z-[100] hover:shadow-2xl z-10 border-2 border-[#2a2a2a] transition-all duration-200 ease-out`;
+                }
+            }
 
             return `
                 <div 
-                    class="relative group w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 cursor-grab active:cursor-grabbing transition-all duration-200 ${tierStyles}"
+                    class="relative group w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 cursor-grab active:cursor-grabbing ${posClass}"
                     ${dragProps}
                 >
                     <img src="${item.url}" class="w-full h-full object-cover rounded shadow-md pointer-events-none select-none bg-gray-800">
                     <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all rounded"></div>
+                    
+                    ${/* 调试/提示用：显示当前对齐状态 (可选，这里不显示保持界面干净) */ ''}
                 </div>
             `;
         }
@@ -141,10 +156,12 @@
             }
 
             // 2. Tiers HTML
-            const tiersHtml = state.tiers.map(tier => `
-                <div class="flex min-h-[140px] border-b-4 border-gray-800 last:border-b-0 relative overflow-hidden">
-                    <!-- 左侧标签 -->
-                    <div class="${tier.color} ${tier.textColor} w-24 sm:w-32 flex-shrink-0 flex items-center justify-center border-r-4 border-gray-800 group relative z-20">
+            const tiersHtml = state.tiers.map((tier, index) => {
+                const zIndex = 50 - index; 
+                return `
+                <div class="flex relative group/row" style="z-index: ${zIndex}">
+                    <!-- 左侧标签：固定正方形 (w-28 h-28 -> w-32 h-32) -->
+                    <div class="${tier.color} ${tier.textColor} w-28 h-28 sm:w-32 sm:h-32 flex-shrink-0 flex items-center justify-center border-r-2 border-b-2 border-gray-800 relative shadow-lg z-20">
                         <textarea 
                             oninput="updateTierLabel('${tier.id}', this.value)"
                             class="w-full h-full bg-transparent text-center resize-none border-none focus:ring-0 p-2 flex items-center justify-center overflow-hidden font-black text-lg sm:text-xl leading-tight placeholder-white/50 focus:bg-black/10 transition-colors cursor-text"
@@ -152,22 +169,30 @@
                     </div>
                     
                     <!-- 放置区域 -->
+                    <!-- items-end: 默认底部对齐 (支持骑线) -->
+                    <!-- flex-wrap: 允许换行 -->
+                    <!-- min-h-[128px]: 确保格子高度足够体现出"居中"和"骑线"的区别 -->
                     <div 
-                        class="drop-zone flex-1 bg-[#1a1a1a] px-4 pb-1 pt-8 flex items-end gap-0 overflow-x-auto tier-scroll relative"
+                        class="drop-zone flex-1 bg-[#1a1a1a] border-b-2 border-gray-600 pl-8 pr-4 flex flex-wrap items-end content-end gap-y-0 tier-container relative transition-all min-h-[8rem] sm:min-h-[8rem]"
                         data-type="tier"
                         data-id="${tier.id}"
                         ondragover="handleDragOver(event)"
                         ondrop="handleDrop(event, '${tier.id}')"
                     >
-                        <!-- 物品列表 (items-end 确保底部对齐) -->
-                        <div class="flex items-end pl-4 pr-4 z-10 w-full min-w-max">
-                            ${tier.items.map(item => renderItem(item, tier.id, tier.id)).join('')}
-                        </div>
+                        ${tier.items.map(item => renderItem(item, tier.id, tier.id)).join('')}
 
-                        ${tier.items.length === 0 ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0"><span class="text-gray-700 text-xs uppercase tracking-widest opacity-30 select-none bg-[#1a1a1a] px-2 mb-4">拖拽至底部吸附</span></div>` : ''}
+                        ${tier.items.length === 0 ? `
+                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0 pb-2">
+                                <span class="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest opacity-40 select-none px-2">
+                                    拖拽至中部：居中放置
+                                </span>
+                                <span class="text-gray-600 text-[10px] sm:text-xs uppercase tracking-widest opacity-40 select-none px-2 mt-1">
+                                    拖拽至底部：吸附底线
+                                </span>
+                            </div>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
 
             // 3. Pool Items HTML
             const poolItemsHtml = state.poolItems.map(item => `
@@ -193,11 +218,11 @@
                             ${ICONS.edit}
                         </div>
                     </div>
-                    <p class="text-gray-400 text-sm mt-2">导入图片，拖拽至行底吸附。图片可左右叠压。</p>
+                    <p class="text-gray-400 text-sm mt-2">支持两种放置方式：拖拽至格子中部居中，拖拽至底部吸附底线。</p>
                 </header>
 
                 <!-- 主排序区 -->
-                <div class="w-full border-4 border-gray-800 rounded-lg overflow-hidden shadow-2xl bg-black">
+                <div class="w-full border-4 border-gray-800 rounded-lg shadow-2xl bg-black flex flex-col gap-0 pb-16">
                     ${tiersHtml}
                 </div>
 
@@ -296,7 +321,7 @@
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', itemId);
                 
-                // 优化拖拽样式：如果是图片，设置透明度；如果是分隔符，保持原样但变淡
+                // 优化拖拽样式
                 setTimeout(() => {
                     if (e.target) e.target.classList.add('opacity-50');
                 }, 0);
@@ -306,13 +331,6 @@
         function handleDragOver(e) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
-            
-            // 简单的放置提示
-            const zone = e.target.closest('.drop-zone');
-            if (zone) {
-                // 清除其他区域的高亮（简单处理）
-                // 实际生产中建议用 ondragenter/leave 管理 class
-            }
         }
 
         function handleDrop(e, targetId) {
@@ -332,10 +350,25 @@
                 }
             }
 
-            // 2. 添加到目标 (简单追加到末尾，暂不支持插队)
-            // 想要支持插队需要更复杂的计算(getBoundingClientRect)，这里为保持单文件简洁，采用追加模式 + 用户自行调整顺序
-            // 实际上 handleDrop 的 target 可能是某个 item，我们可以尝试插入
-            
+            // 2. 核心逻辑：检测落点高度，决定布局方式
+            // 如果目标是 Tier，我们需要计算鼠标在 dropZone 内的相对位置
+            if (targetId !== 'pool') {
+                const dropZone = e.currentTarget;
+                const rect = dropZone.getBoundingClientRect();
+                const relativeY = e.clientY - rect.top; // 鼠标距离容器顶部的距离
+                const zoneHeight = rect.height;
+                
+                // 阈值判断：如果落在下半部分 (例如 > 60%)，则视为"骑线"，否则视为"居中"
+                // 60% 是个经验值，用户拖到底部意图更明显
+                const isBottom = relativeY > (zoneHeight * 0.6);
+                
+                draggedItem.customAlign = isBottom ? 'line' : 'center';
+            } else {
+                // 回到 pool 清除对齐属性
+                delete draggedItem.customAlign;
+            }
+
+            // 3. 添加到目标
             let targetList;
             if (targetId === 'pool') {
                 targetList = state.poolItems;
@@ -345,13 +378,7 @@
             }
 
             if (targetList) {
-                // 尝试检测是否 Drop 在了某个 Item 上以实现插入
-                const dropTargetItem = e.target.closest('[draggable="true"]');
-                if (dropTargetItem) {
-                    targetList.push(draggedItem);
-                } else {
-                    targetList.push(draggedItem);
-                }
+                targetList.push(draggedItem);
             }
 
             // 重置状态
@@ -429,6 +456,8 @@
         function confirmModal() {
             if (state.modal.type === 'reset') {
                 const allTierItems = state.tiers.flatMap(t => t.items);
+                // 重置时清除对齐属性
+                allTierItems.forEach(i => delete i.customAlign);
                 state.poolItems.push(...allTierItems);
                 state.tiers.forEach(t => t.items = []);
             } else if (state.modal.type === 'clear') {
